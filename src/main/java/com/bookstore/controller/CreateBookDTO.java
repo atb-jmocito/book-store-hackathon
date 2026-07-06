@@ -1,12 +1,11 @@
-package com.bookstore.model;
+package com.bookstore.controller;
 
 import java.util.Date;
 
-public class Book {
-    private String id;
+public class CreateBookDTO {
     private String title;
     private String author;
-    private int categoryId;
+    private String categoryId;
     private int quantity;
     private String description;
     private String language;
@@ -17,15 +16,7 @@ public class Book {
     private String publisher;
     private Date publisherDate;
 
-    public Book() {
-    }
-
-    public String getId() {
-        return id;
-    }
-
-    public void setId(String id) {
-        this.id = id;
+    public CreateBookDTO() {
     }
 
     public String getTitle() {
@@ -44,11 +35,11 @@ public class Book {
         this.author = author;
     }
 
-    public int getCategoryId() {
+    public String getCategoryId() {
         return categoryId;
     }
 
-    public void setCategoryId(int categoryId) {
+    public void setCategoryId(String categoryId) {
         this.categoryId = categoryId;
     }
 

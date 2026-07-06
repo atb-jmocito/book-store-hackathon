@@ -12,11 +12,9 @@ public class BookController {
     private BookService bookService;
 
     public BookController() {
-        // direct instantiation (tight coupling)
         this.bookService = new BookService();
     }
 
-    // constructor for tests to inject a mock service
     public BookController(BookService bookService) {
         this.bookService = bookService;
     }
@@ -29,16 +27,67 @@ public class BookController {
 
     @GET
     @Produces(MediaType.APPLICATION_JSON)
-    public Response listBook() {
-        var result = bookService.listBooks();
+    public Response listBook(@QueryParam("category") String category) {
+        var result = bookService.getBookList(category);
         return Response.status(Response.Status.OK).entity(result).build();
+    }
+
+    @GET
+    @Produces(MediaType.APPLICATION_JSON)
+    @Path("/single")
+    public Response getBook(@QueryParam("id") String Id, @QueryParam("name") String name, @QueryParam("author") String author) {
+        if (author != null) {
+            // TODO endpoint already prepared for new filter. When you develop the author support create the filter by author
+            throw new RuntimeException("Filtering by author is not implemented yet");
+        }
+
+        var result = bookService.getBook(Id, name);
+        return Response.status(Response.Status.OK).entity(result).build();
+    }
+
+    @PUT
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response updateBook(UpdateBookDTO request) {
+        if (request.getId() != null) {
+            Book created = bookService.upsertBook(
+                    request.getId(),
+                    null,
+                    null,
+                    null,
+                    request.getQuantity(),
+                    null,
+                    null,
+                    request.isActive(),
+                    null,
+                    null,
+                    null);
+            return Response.status(Response.Status.CREATED).entity(created).build();
+        } else {
+            return Response.status(Response.Status.NOT_FOUND).build();
+        }
     }
 
     @POST
     @Consumes(MediaType.APPLICATION_JSON)
-    public Response createBook(Book request) {
-        // no null checks, potential NPE if request or fields are null
-        Book created = bookService.addBook(request.getTitle(), request.getAuthor(), request.getCategoryId(), request.getDescription());
-        return Response.status(Response.Status.CREATED).entity(created).build();
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response createBook(CreateBookDTO request) {
+        if (request.getTitle() != null) {
+            Book created = bookService.upsertBook(
+                    null,
+                    request.getTitle(),
+                    request.getAuthor(),
+                    request.getCategoryId(),
+                    request.getQuantity(),
+                    request.getDescription(),
+                    request.getLanguage(),
+                    request.isActive(),
+                    request.getInactiveDate(),
+                    request.getPublisher(),
+                    request.getPublisherDate());
+            return Response.status(Response.Status.CREATED).entity(created).build();
+        } else {
+            return Response.status(Response.Status.NOT_FOUND).build();
+        }
     }
 }
