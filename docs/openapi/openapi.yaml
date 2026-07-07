@@ -1,0 +1,397 @@
+openapi: 3.0.4
+info:
+  title: Bookstore API
+  version: 0.1.0
+  license:
+    name: UNLICENSED
+    url: https://example.com/licenses/unlicensed
+  description: |-
+    OpenAPI snapshot for current Bookstore runtime behavior.
+
+    This spec intentionally mirrors the implementation in `src/main/java` as it exists today,
+    including response quirks and unhandled error cases.
+security: []
+servers:
+  - url: /api
+    description: Base path configured by `BookstoreApp` and typically served on port 8080
+tags:
+  - name: books
+    description: Book inventory operations
+paths:
+  /books/health:
+    get:
+      tags:
+        - books
+      operationId: getBooksHealth
+      summary: Check API health
+      responses:
+        '200':
+          description: Request succeeded. Response body is empty.
+  /books:
+    get:
+      tags:
+        - books
+      operationId: listBooks
+      summary: List books
+      description: |-
+        Returns all books by default.
+
+        When `category` matches one of the static category names, the response is filtered by
+        that category. Unknown category values fall back to the full book list instead of
+        returning an error.
+      parameters:
+        - $ref: '#/components/parameters/CategoryQuery'
+      responses:
+        '200':
+          description: List of books.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Book'
+              examples:
+                allBooks:
+                  summary: Unfiltered response
+                  value:
+                    - id: 507f1f77bcf86cd799439011
+                      title: Test Driven Development
+                      author: Kent Beck
+                      categoryId: 6
+                      quantity: 3
+                      description: A book about TDD
+                      language: English
+                      active: true
+                      inactiveDate: null
+                      publisher: Addison-Wesley
+                      publisherDate: '2002-05-20T00:00:00Z'
+    post:
+      tags:
+        - books
+      operationId: createBook
+      summary: Create a book
+      description: |-
+        Creates a book when `title` is present.
+
+        The request field named `categoryId` currently expects a category name such as
+        `Programming`, not a numeric identifier.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateBookRequest'
+            examples:
+              validBook:
+                summary: Successful create request
+                value:
+                  title: Test Driven Development
+                  author: Kent Beck
+                  categoryId: Programming
+                  quantity: 3
+                  description: A book about TDD
+                  language: English
+                  active: true
+                  inactiveDate: null
+                  publisher: Addison-Wesley
+                  publisherDate: '2002-05-20T00:00:00Z'
+      responses:
+        '201':
+          description: Created book.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Book'
+        '404':
+          $ref: '#/components/responses/EmptyNotFound'
+        '500':
+          description: |-
+            Unhandled runtime error. One known trigger is providing a `categoryId` value that
+            does not match any static category name, which leads to a null dereference in
+            `BookService.validateCategory(...)`.
+    put:
+      tags:
+        - books
+      operationId: updateBook
+      summary: Update book quantity and active flag
+      description: |-
+        Updates an existing book when `id` is present.
+
+        The current implementation only writes `quantity`, `active`, and `inactiveDate`, then
+        returns an in-memory `Book` object whose other fields remain null or defaulted.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateBookRequest'
+            examples:
+              deactivateBook:
+                summary: Update request
+                value:
+                  id: 507f1f77bcf86cd799439011
+                  quantity: 0
+                  active: false
+      responses:
+        '201':
+          description: |-
+            Update accepted. Response body is a sparse `Book` object built by the service layer.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Book'
+              examples:
+                updatedBook:
+                  summary: Typical update response
+                  value:
+                    id: 507f1f77bcf86cd799439011
+                    title: null
+                    author: null
+                    categoryId: 0
+                    quantity: 0
+                    description: null
+                    language: null
+                    active: false
+                    inactiveDate: '2026-07-07T09:00:00Z'
+                    publisher: null
+                    publisherDate: null
+        '404':
+          $ref: '#/components/responses/EmptyNotFound'
+        '500':
+          description: |-
+            Unhandled runtime error. One known trigger is an invalid `id` value that cannot be
+            converted to a MongoDB `ObjectId`.
+  /books/single:
+    get:
+      tags:
+        - books
+      operationId: getSingleBook
+      summary: Get a single book by id or name
+      description: |-
+        Attempts a title lookup when `name` is supplied, then an id lookup when `id` is
+        supplied.
+
+        Current runtime notes:
+        - supplying `author` causes an unhandled runtime exception because author filtering is
+          not implemented
+        - if no match is found, the endpoint still responds with HTTP 200 and a JSON `null`
+          payload
+        - id lookup uses Java string reference comparison in the service, so matching by id may
+          unexpectedly return `null`
+      parameters:
+        - $ref: '#/components/parameters/BookIdQuery'
+        - $ref: '#/components/parameters/BookNameQuery'
+        - $ref: '#/components/parameters/AuthorQuery'
+      responses:
+        '200':
+          description: Matching book or null.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NullableBook'
+              examples:
+                found:
+                  summary: Matching book
+                  value:
+                    id: 507f1f77bcf86cd799439011
+                    title: Test Driven Development
+                    author: Kent Beck
+                    categoryId: 6
+                    quantity: 3
+                    description: A book about TDD
+                    language: English
+                    active: true
+                    inactiveDate: null
+                    publisher: Addison-Wesley
+                    publisherDate: '2002-05-20T00:00:00Z'
+                notFound:
+                  summary: No match
+                  value: null
+        '500':
+          description: |-
+            Unhandled runtime error. The documented path to this response is providing the
+            `author` query parameter.
+components:
+  parameters:
+    CategoryQuery:
+      name: category
+      in: query
+      required: false
+      description: Static category name filter.
+      schema:
+        $ref: '#/components/schemas/CategoryName'
+    BookIdQuery:
+      name: id
+      in: query
+      required: false
+      description: Book id as hexadecimal MongoDB ObjectId string.
+      schema:
+        type: string
+        example: 507f1f77bcf86cd799439011
+    BookNameQuery:
+      name: name
+      in: query
+      required: false
+      description: Exact book title match.
+      schema:
+        type: string
+        example: Test Driven Development
+    AuthorQuery:
+      name: author
+      in: query
+      required: false
+      description: |-
+        Present in the runtime signature but not implemented. Any non-null value currently
+        triggers an unhandled server error.
+      schema:
+        type: string
+  responses:
+    EmptyNotFound:
+      description: Request rejected with HTTP 404 and no response body.
+  schemas:
+    CategoryName:
+      type: string
+      enum:
+        - Fiction
+        - Non-Fiction
+        - Science
+        - Biography
+        - Children
+        - Programming
+    NullableDateTime:
+      type: string
+      format: date-time
+      nullable: true
+    Book:
+      type: object
+      properties:
+        id:
+          type: string
+          description: MongoDB object id rendered as hex string.
+          example: 507f1f77bcf86cd799439011
+        title:
+          type: string
+          nullable: true
+        author:
+          type: string
+          nullable: true
+        categoryId:
+          type: integer
+          format: int32
+          description: Numeric category id stored in MongoDB.
+          enum:
+            - 0
+            - 1
+            - 2
+            - 3
+            - 4
+            - 5
+            - 6
+        quantity:
+          type: integer
+          format: int32
+        description:
+          type: string
+          nullable: true
+        language:
+          type: string
+          nullable: true
+        active:
+          type: boolean
+        inactiveDate:
+          $ref: '#/components/schemas/NullableDateTime'
+        publisher:
+          type: string
+          nullable: true
+        publisherDate:
+          $ref: '#/components/schemas/NullableDateTime'
+    NullableBook:
+      type: object
+      nullable: true
+      properties:
+        id:
+          type: string
+          description: MongoDB object id rendered as hex string.
+          example: 507f1f77bcf86cd799439011
+        title:
+          type: string
+          nullable: true
+        author:
+          type: string
+          nullable: true
+        categoryId:
+          type: integer
+          format: int32
+          enum:
+            - 0
+            - 1
+            - 2
+            - 3
+            - 4
+            - 5
+            - 6
+        quantity:
+          type: integer
+          format: int32
+        description:
+          type: string
+          nullable: true
+        language:
+          type: string
+          nullable: true
+        active:
+          type: boolean
+        inactiveDate:
+          $ref: '#/components/schemas/NullableDateTime'
+        publisher:
+          type: string
+          nullable: true
+        publisherDate:
+          $ref: '#/components/schemas/NullableDateTime'
+    CreateBookRequest:
+      type: object
+      properties:
+        title:
+          type: string
+          nullable: true
+          description: Required for a successful create. Null or missing title returns HTTP 404.
+        author:
+          type: string
+          nullable: true
+        categoryId:
+          $ref: '#/components/schemas/CategoryName'
+        quantity:
+          type: integer
+          format: int32
+          default: 0
+        description:
+          type: string
+          nullable: true
+        language:
+          type: string
+          nullable: true
+        active:
+          type: boolean
+          default: true
+        inactiveDate:
+          $ref: '#/components/schemas/NullableDateTime'
+        publisher:
+          type: string
+          nullable: true
+        publisherDate:
+          $ref: '#/components/schemas/NullableDateTime'
+    UpdateBookRequest:
+      type: object
+      properties:
+        id:
+          type: string
+          nullable: true
+          description: Required for a successful update. Null or missing id returns HTTP 404.
+          example: 507f1f77bcf86cd799439011
+        quantity:
+          type: integer
+          format: int32
+          default: 0
+        active:
+          type: boolean
+          default: false
