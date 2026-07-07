@@ -6,6 +6,8 @@ services:
     depends_on:
       - mongodb
     environment:
+      APP_ENV: local
+      ENABLE_SWAGGER_UI: "true"
       MONGODB_URI: mongodb://mongodb:27017
     ports:
       - "8080:8080"
@@ -30,4 +32,3 @@ networks:
 
 volumes:
   mongodb-data:
-

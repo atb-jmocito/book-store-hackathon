@@ -83,41 +83,40 @@ This technical doc references that folder for endpoint-by-endpoint contract deta
 
 ### Application startup
 
-`BookstoreApp` is the bootstrap class. It hardcodes the base URI `http://0.0.0.0:8080/api/`, registers `JsonBindingFeature`, and registers `BookController` as the only HTTP resource.
+`BookstoreApp` is the bootstrap class. It loads environment-driven configuration, creates a shared MongoDB client, registers JSON binding, request tracing, RFC 7807 exception mappers, runtime documentation resources, and the `BookController`, then starts Grizzly on the configured base URI.
 
 Implications:
 
-- the application is configured entirely in code
-- there is no external configuration mechanism for host, port, or MongoDB URI in the Java code
-- there is no graceful shutdown handling in the current bootstrap path
+- runtime host, port, API base path, MongoDB URI, and Swagger UI exposure are externally configurable
+- request tracing and JSON logging are applied globally
+- shutdown closes both the HTTP server and shared MongoDB client
 
 ### Read flow
 
 For `GET /api/books`:
 
-1. `BookController.listBook(...)` receives optional `category`
-2. `BookService.getBookList(...)` resolves the category name against static in-memory categories
-3. service reads all documents from MongoDB
-4. service filters in memory when category matches
+1. `BookController.listBooks(...)` receives optional `category`
+2. `BookService.listBooks(...)` resolves the category name against static in-memory categories
+3. service queries MongoDB directly, optionally filtering by category id
 5. controller returns `200 OK` with JSON array
 
 For `GET /api/books/single`:
 
 1. controller accepts `id`, `name`, and `author`
-2. if `author` is present, controller throws a runtime exception because filter is not implemented
-3. otherwise `BookService.getBook(...)` scans in-memory results from `listBooks()`
-4. controller returns `200 OK` with a `Book` or `null`
+2. controller delegates to `BookService.getSingleBook(...)`
+3. service supports lookup by id, exact title, or exact author
+4. errors are returned as RFC 7807 problem responses instead of uncaught exceptions or `null` payloads
 
 ### Write flow
 
 For `POST /api/books`:
 
 1. controller accepts `CreateBookDTO`
-2. request is considered valid only when `title` is non-null
-3. controller forwards request data to `BookService.upsertBook(...)`
+2. request is validated for required title and supported category
+3. controller forwards request data to `BookService.createBook(...)`
 4. service converts category name to numeric category id
 5. service inserts a MongoDB document into `books`
-6. controller returns `201 Created` with the in-memory `Book`
+6. controller returns `201 Created` with the persisted `Book`
 
 For `PUT /api/books`:
 
@@ -170,13 +169,13 @@ For `PUT /api/books`:
 
 - HTTP entrypoints
 - JAX-RS annotations
-- request validation that is currently minimal and inline
+- HTTP entrypoints, compatibility routes, and DTOs used for request deserialization
 - DTOs used for request deserialization
 
 #### `com.bookstore.service`
 
-- business and persistence logic are combined here
-- category resolution, MongoDB client creation, document persistence, and result mapping all live in one class
+- business and persistence logic are still combined here
+- category resolution, validation, document persistence, and result mapping live in one class
 
 #### `com.bookstore.model`
 
@@ -184,7 +183,7 @@ For `PUT /api/books`:
 
 #### `src/test`
 
-- currently contains one controller unit test covering successful create behavior with a mocked `BookService`
+- contains controller tests, service tests, and Docker-gated integration tests
 
 ## Data model
 
@@ -218,7 +217,7 @@ Current categories:
 ### Build toolchain
 
 - Maven project
-- Java source/target: 11
+- Java release target: 21
 - shaded executable JAR produced by `maven-shade-plugin`
 
 ### Key dependencies
@@ -230,7 +229,8 @@ Current categories:
 | `jersey-hk2` | Jersey injection support |
 | `jersey-media-json-binding` | JSON serialization/deserialization |
 | `mongodb-driver-sync` | Synchronous MongoDB access |
-| `junit-jupiter`, `mockito` | Unit testing |
+| `slf4j`, `logback`, `logstash-logback-encoder` | JSON logging with MDC trace ids |
+| `junit-jupiter`, `mockito`, `testcontainers` | Unit and integration testing |
 
 ### Local run path
 
@@ -249,16 +249,9 @@ The Docker image is built in two stages:
 
 These are implementation observations, not proposed fixes:
 
-- configuration is hardcoded in Java instead of being read from environment or config files
-- `BookService` opens and closes a MongoDB client on each call
-- controller and service validation are inconsistent and return surprising status codes
-- `GET /books/single` supports an `author` parameter in the signature but throws at runtime
-- category resolution depends on a field named `categoryId` that actually carries a category name in create requests
-- id matching in `BookService.getBook(...)` uses Java reference equality (`==`) instead of string value equality
-- update responses do not represent the full persisted document
-- categories are defined in both Java and MongoDB seed data, which creates duplication risk
-- there is no runtime OpenAPI endpoint or Swagger UI yet
-- test coverage is minimal
+- categories are still defined in both Java and MongoDB seed data, which creates duplication risk
+- there is still no authentication or authorization model
+- legacy compatibility routes remain exposed during transition and should eventually be removed
 
 ## Extension points
 

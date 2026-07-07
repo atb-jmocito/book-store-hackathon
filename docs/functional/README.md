@@ -95,7 +95,7 @@ Rules:
 
 - when no category is supplied, system returns all books
 - when category matches one of six predefined category names, system returns only books in that category
-- when category does **not** match a predefined category, system does **not** reject request and does **not** return zero results; it falls back to full list
+- when category does **not** match a predefined category, system rejects request with validation error details
 - response is a plain list of books with no pagination
 - no sort order is defined as business behavior
 
@@ -105,16 +105,14 @@ Purpose: retrieve a single book record.
 
 Current lookup behavior:
 
-- system accepts lookup by `name` or `id`
+- system accepts lookup by `name`, `id`, or `author`
 - title lookup uses exact title equality
-- if both `name` and `id` are supplied, system attempts title lookup first and id lookup second
-- `author` is exposed as a request parameter but is not implemented as a working business capability
+- if more than one lookup parameter is supplied, `id` has precedence, then `name`, then `author`
 
 Business-relevant quirks:
 
-- providing `author` causes request failure instead of filtering
-- when nothing matches, system still returns successful response with `null` payload instead of a not-found response
-- id lookup is currently unreliable because implementation compares string references instead of string values
+- when nothing matches, system returns not-found problem details
+- id lookup validates MongoDB ObjectId format and rejects malformed ids as bad requests
 
 ### 4. Create book
 
@@ -124,8 +122,9 @@ Rules:
 
 - create succeeds only when `title` is present
 - all other fields are optional at runtime
-- `categoryId` must carry a category **name**, not numeric id
-- if `categoryId` is invalid, create can fail with server error instead of business validation message
+- `categoryName` is preferred for create requests
+- legacy `categoryId` is still accepted during transition, but still carries category **name** text rather than numeric id
+- invalid category values are rejected with validation-oriented error details
 - quantity defaults to `0` when omitted
 - active defaults to `true` when omitted
 - system does not prevent duplicate books
@@ -136,7 +135,7 @@ Rules:
 Output behavior:
 
 - successful create returns created book payload
-- missing `title` is rejected, but current runtime returns `404` with empty body rather than a business-style validation response
+- missing `title` is rejected with RFC 7807 validation error details
 
 ### 5. Update stock and active status
 
@@ -152,14 +151,13 @@ Rules:
 - update flow does **not** change title, author, category, description, language, publisher, or publisher date
 - when book is updated with `active = false`, system sets `inactiveDate` to current system time
 - when book is updated with `active = true`, system clears `inactiveDate`
-- request model defaults `active` to `false` when omitted, so stock updates must send intended status explicitly or the book can be deactivated by mistake
+- `active` is optional in update requests and is only changed when explicitly supplied
 - quantity has no business validation, so negative values are accepted
 
 Output behavior:
 
-- successful update returns a sparse book payload
-- returned payload may omit or null out unchanged descriptive fields even though stored record still contains them
-- missing `id` is rejected, but current runtime returns `404` with empty body rather than a business-style validation response
+- successful update returns a full refreshed book payload
+- missing `id` is rejected with RFC 7807 validation error details
 
 ## Lifecycle rules
 
@@ -184,23 +182,17 @@ Current product has several constraints that matter to business stakeholders:
 - no user roles or access control
 - no audit trail of who changed a book
 - no approval step before a book becomes active/inactive
-- no validation workflow for bad data beyond minimal field presence checks
+- no validation workflow yet for inventory rules such as non-negative quantity
 - no bulk operations
-- no support for searching by author
+- author lookup is supported on the legacy single-book compatibility route
 - no support for editing descriptive metadata after create
 
 ## Known behavior quirks to keep in mind
 
 These are not desired-state recommendations. They are current behaviors that affect real usage:
 
-- unknown category filter returns full catalog instead of zero results or validation error
-- create field name `categoryId` is misleading because callers must send category name
-- invalid category on create can produce server failure
-- single-book lookup can return success with `null`
-- single-book lookup by author is exposed but broken
-- id-based single-book lookup may fail even for existing books
-- validation-like failures currently return `404` with no response body
-- update success returns `201` and sparse data rather than a full refreshed record
+- create field name `categoryId` remains as deprecated compatibility alias and still carries category name text
+- legacy compatibility endpoints remain exposed and should be phased out after client migration
 
 ## Source traceability
 

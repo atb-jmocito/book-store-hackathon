@@ -1,16 +1,20 @@
 package com.bookstore.controller;
 
+import jakarta.json.bind.annotation.JsonbProperty;
+
 import java.util.Date;
 
 public class CreateBookDTO {
     private String title;
     private String author;
-    private String categoryId;
-    private int quantity;
+    @JsonbProperty("categoryId")
+    private String legacyCategoryName;
+    private String categoryName;
+    private Integer quantity;
     private String description;
     private String language;
 
-    private boolean active = true;
+    private Boolean active;
     private Date inactiveDate;
 
     private String publisher;
@@ -36,18 +40,26 @@ public class CreateBookDTO {
     }
 
     public String getCategoryId() {
-        return categoryId;
+        return legacyCategoryName;
     }
 
     public void setCategoryId(String categoryId) {
-        this.categoryId = categoryId;
+        this.legacyCategoryName = categoryId;
     }
 
-    public int getQuantity() {
+    public String getCategoryName() {
+        return categoryName;
+    }
+
+    public void setCategoryName(String categoryName) {
+        this.categoryName = categoryName;
+    }
+
+    public Integer getQuantity() {
         return quantity;
     }
 
-    public void setQuantity(int quantity) {
+    public void setQuantity(Integer quantity) {
         this.quantity = quantity;
     }
 
@@ -68,10 +80,10 @@ public class CreateBookDTO {
     }
 
     public boolean isActive() {
-        return active;
+        return active == null || active;
     }
 
-    public void setActive(boolean active) {
+    public void setActive(Boolean active) {
         this.active = active;
     }
 
@@ -97,5 +109,12 @@ public class CreateBookDTO {
 
     public void setPublisherDate(Date publisherDate) {
         this.publisherDate = publisherDate;
+    }
+
+    public String resolveCategoryName() {
+        if (categoryName != null && !categoryName.isBlank()) {
+            return categoryName;
+        }
+        return legacyCategoryName;
     }
 }

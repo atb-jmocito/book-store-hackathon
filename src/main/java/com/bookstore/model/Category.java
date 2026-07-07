@@ -1,22 +1,23 @@
 package com.bookstore.model;
 
-import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Optional;
 
 public class Category {
     private int id;
     private String name;
 
-    public static final List<Category> STATIC_CATEGORIES = new ArrayList<>();
-
-    static {
-        STATIC_CATEGORIES.add(new Category(1, "Fiction"));
-        STATIC_CATEGORIES.add(new Category(2, "Non-Fiction"));
-        STATIC_CATEGORIES.add(new Category(3, "Science"));
-        STATIC_CATEGORIES.add(new Category(4, "Biography"));
-        STATIC_CATEGORIES.add(new Category(5, "Children"));
-        STATIC_CATEGORIES.add(new Category(6, "Programming"));
-    }
+    public static final List<Category> STATIC_CATEGORIES = List.of(
+            new Category(1, "Fiction"),
+            new Category(2, "Non-Fiction"),
+            new Category(3, "Science"),
+            new Category(4, "Biography"),
+            new Category(5, "Children"),
+            new Category(6, "Programming"));
+    private static final Map<String, Category> CATEGORIES_BY_NAME = categoriesByName();
 
     public Category() {}
 
@@ -39,5 +40,20 @@ public class Category {
 
     public void setName(String name) {
         this.name = name;
+    }
+
+    public static Optional<Category> findByName(String name) {
+        if (name == null || name.isBlank()) {
+            return Optional.empty();
+        }
+        return Optional.ofNullable(CATEGORIES_BY_NAME.get(name.trim().toLowerCase(Locale.ROOT)));
+    }
+
+    private static Map<String, Category> categoriesByName() {
+        Map<String, Category> categories = new LinkedHashMap<>();
+        for (Category category : STATIC_CATEGORIES) {
+            categories.put(category.getName().toLowerCase(Locale.ROOT), category);
+        }
+        return Map.copyOf(categories);
     }
 }
