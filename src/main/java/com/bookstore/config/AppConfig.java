@@ -9,6 +9,7 @@ public record AppConfig(
         String mongoUri,
         String databaseName,
         String collectionName,
+        String authorCollectionName,
         String environment,
         boolean swaggerUiEnabled) {
 
@@ -24,6 +25,7 @@ public record AppConfig(
                 envOrDefault("MONGODB_URI", "mongodb://mongodb:27017"),
                 envOrDefault("BOOKSTORE_DATABASE", "bookstore"),
                 envOrDefault("BOOKSTORE_COLLECTION", "books"),
+                envOrDefault("BOOKSTORE_AUTHOR_COLLECTION", "authors"),
                 environment,
                 swaggerUiEnabled);
     }

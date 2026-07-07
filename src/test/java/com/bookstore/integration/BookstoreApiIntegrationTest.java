@@ -6,10 +6,14 @@ import com.bookstore.api.HealthResource;
 import com.bookstore.api.UnhandledExceptionMapper;
 import com.bookstore.config.AppConfig;
 import com.bookstore.config.RequestTracingFilter;
+import com.bookstore.controller.AuthorController;
+import com.bookstore.controller.CreateAuthorDTO;
 import com.bookstore.controller.BookController;
 import com.bookstore.controller.CreateBookDTO;
 import com.bookstore.controller.UpdateBookDTO;
+import com.bookstore.model.Author;
 import com.bookstore.model.Book;
+import com.bookstore.service.AuthorService;
 import com.bookstore.service.BookService;
 import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoClients;
@@ -50,6 +54,7 @@ class BookstoreApiIntegrationTest {
     private Client client;
     private MongoClient mongoClient;
     private MongoCollection<Document> booksCollection;
+    private MongoCollection<Document> authorsCollection;
     private String baseUrl;
 
     @BeforeEach
@@ -60,11 +65,14 @@ class BookstoreApiIntegrationTest {
         mongoClient = MongoClients.create(MONGO.getReplicaSetUrl());
         MongoDatabase database = mongoClient.getDatabase("bookstore-integration");
         booksCollection = database.getCollection("books");
+        authorsCollection = database.getCollection("authors");
         booksCollection.deleteMany(new Document());
+        authorsCollection.deleteMany(new Document());
         booksCollection.insertOne(sampleBookDocument());
 
-        AppConfig appConfig = new AppConfig("127.0.0.1", port, "/api", MONGO.getReplicaSetUrl(), "bookstore-integration", "books", "test", true);
-        BookService bookService = new BookService(mongoClient, appConfig.databaseName(), appConfig.collectionName());
+        AppConfig appConfig = new AppConfig("127.0.0.1", port, "/api", MONGO.getReplicaSetUrl(), "bookstore-integration", "books", "authors", "test", true);
+        AuthorService authorService = new AuthorService(mongoClient, appConfig.databaseName(), appConfig.authorCollectionName());
+        BookService bookService = new BookService(mongoClient, appConfig.databaseName(), appConfig.collectionName(), authorService);
         ResourceConfig resourceConfig = new ResourceConfig()
                 .register(JsonBindingFeature.class)
                 .register(new RequestTracingFilter())
@@ -72,6 +80,7 @@ class BookstoreApiIntegrationTest {
                 .register(new UnhandledExceptionMapper())
                 .register(new HealthResource())
                 .register(new DocumentationResource(appConfig))
+                .register(new AuthorController(authorService))
                 .register(new BookController(bookService));
 
         server = GrizzlyHttpServerFactory.createHttpServer(URI.create(baseUrl + "/"), resourceConfig);
@@ -106,7 +115,72 @@ class BookstoreApiIntegrationTest {
 
             assertEquals(201, response.getStatus());
             assertEquals(6, created.getCategoryId());
+            assertNotNull(created.getAuthorId());
             assertNotNull(response.getHeaderString(RequestTracingFilter.TRACE_ID_HEADER));
+        }
+    }
+
+    @Test
+    void authorLifecycleEndpointsWork() {
+        CreateAuthorDTO request = new CreateAuthorDTO();
+        request.setName("Robert C. Martin");
+        request.setEmail("unclebob@example.com");
+
+        String authorId;
+        try (Response createResponse = client.target(baseUrl + "/authors")
+                .request(MediaType.APPLICATION_JSON_TYPE)
+                .post(Entity.entity(request, MediaType.APPLICATION_JSON_TYPE))) {
+            Author created = createResponse.readEntity(Author.class);
+
+            assertEquals(201, createResponse.getStatus());
+            assertEquals("Robert C. Martin", created.getName());
+            authorId = created.getId();
+        }
+
+        try (Response getResponse = client.target(baseUrl + "/authors/" + authorId)
+                .request(MediaType.APPLICATION_JSON_TYPE)
+                .get()) {
+            Author author = getResponse.readEntity(Author.class);
+
+            assertEquals(200, getResponse.getStatus());
+            assertEquals(authorId, author.getId());
+            assertEquals(true, author.isActive());
+        }
+
+        try (Response deleteResponse = client.target(baseUrl + "/authors/" + authorId)
+                .request(MediaType.APPLICATION_JSON_TYPE)
+                .delete()) {
+            Author deleted = deleteResponse.readEntity(Author.class);
+
+            assertEquals(200, deleteResponse.getStatus());
+            assertEquals(false, deleted.isActive());
+        }
+    }
+
+    @Test
+    void listBooksFiltersByAuthorId() {
+        String authorId = createAuthor("Martin Fowler");
+
+        CreateBookDTO request = new CreateBookDTO();
+        request.setTitle("Refactoring");
+        request.setAuthorId(authorId);
+        request.setCategoryName("Programming");
+
+        try (Response createResponse = client.target(baseUrl + "/books")
+                .request(MediaType.APPLICATION_JSON_TYPE)
+                .post(Entity.entity(request, MediaType.APPLICATION_JSON_TYPE))) {
+            assertEquals(201, createResponse.getStatus());
+        }
+
+        try (Response listResponse = client.target(baseUrl + "/books")
+                .queryParam("authorId", authorId)
+                .request(MediaType.APPLICATION_JSON_TYPE)
+                .get()) {
+            String payload = listResponse.readEntity(String.class);
+
+            assertEquals(200, listResponse.getStatus());
+            assertTrue(payload.contains("Refactoring"));
+            assertTrue(payload.contains(authorId));
         }
     }
 
@@ -169,8 +243,22 @@ class BookstoreApiIntegrationTest {
 
             assertEquals(200, docs.getStatus());
             assertTrue(openApi.contains("/books/{id}:"));
+            assertTrue(openApi.contains("/authors/{id}:"));
             assertEquals(200, swaggerUi.getStatus());
             assertTrue(swaggerHtml.contains("SwaggerUIBundle"));
+        }
+    }
+
+    private String createAuthor(String name) {
+        CreateAuthorDTO request = new CreateAuthorDTO();
+        request.setName(name);
+
+        try (Response response = client.target(baseUrl + "/authors")
+                .request(MediaType.APPLICATION_JSON_TYPE)
+                .post(Entity.entity(request, MediaType.APPLICATION_JSON_TYPE))) {
+            Author created = response.readEntity(Author.class);
+            assertEquals(201, response.getStatus());
+            return created.getId();
         }
     }
 

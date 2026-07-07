@@ -16,6 +16,7 @@ class CreateBookDTOTest {
         Date publisherDate = new Date(1);
 
         dto.setTitle("Refactoring");
+        dto.setAuthorId("507f1f77bcf86cd799439011");
         dto.setAuthor("Martin Fowler");
         dto.setCategoryId("Programming");
         dto.setCategoryName("Science");
@@ -27,6 +28,7 @@ class CreateBookDTOTest {
         dto.setPublisherDate(publisherDate);
 
         assertEquals("Refactoring", dto.getTitle());
+        assertEquals("507f1f77bcf86cd799439011", dto.getAuthorId());
         assertEquals("Martin Fowler", dto.getAuthor());
         assertEquals("Programming", dto.getCategoryId());
         assertEquals("Science", dto.getCategoryName());

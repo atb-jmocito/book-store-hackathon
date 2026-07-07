@@ -8,10 +8,13 @@
 
 ## Contract shape
 
-- Primary endpoints follow the current compliant contract: `/health`, `/books`, and `/books/{id}`
+- Primary endpoints follow the current compliant contract: `/health`, `/authors`, `/authors/{id}`, `/books`, and `/books/{id}`
 - Legacy compatibility endpoints remain temporarily available and are marked as deprecated in the spec
 - Error responses use RFC 7807 `application/problem+json`
 - Authentication requirement today: none
+- Books now expose additive author linkage through `authorId` while retaining legacy `author` display text
+- `POST /books` supports canonical `authorId` plus legacy `author` compatibility resolution
+- `GET /books` supports both `category` and `authorId` filters
 
 ## Maintenance notes
 

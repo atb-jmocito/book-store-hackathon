@@ -1,6 +1,6 @@
 # Bookstore API
 
-Bookstore API manages bookstore inventory records backed by MongoDB. It exposes health, listing, lookup, create, and update operations for books, plus runtime OpenAPI documentation.
+Bookstore API manages bookstore inventory records and author profiles backed by MongoDB. It exposes health, author management, book listing and lookup, book creation and update operations, plus runtime OpenAPI documentation.
 
 ## Prerequisites
 
@@ -8,7 +8,7 @@ Bookstore API manages bookstore inventory records backed by MongoDB. It exposes 
 - Maven 3.9+
 - Docker and Docker Compose
 - MongoDB, unless running through Docker Compose
-- Environment variables when overriding defaults: `MONGODB_URI`, `SERVER_HOST`, `SERVER_PORT`, `API_BASE_PATH`, `APP_ENV`, `ENABLE_SWAGGER_UI`
+- Environment variables when overriding defaults: `MONGODB_URI`, `SERVER_HOST`, `SERVER_PORT`, `API_BASE_PATH`, `APP_ENV`, `ENABLE_SWAGGER_UI`, `BOOKSTORE_DATABASE`, `BOOKSTORE_COLLECTION`, `BOOKSTORE_AUTHOR_COLLECTION`
 
 ## Getting Started
 
@@ -40,7 +40,7 @@ Default local API base URL: `http://localhost:8080/api`
 mvn verify
 ```
 
-The build runs unit tests, integration tests, and JaCoCo coverage checks for business logic.
+The build runs unit tests, Docker-gated integration tests, and JaCoCo bundle-wide coverage checks with a 70% minimum threshold.
 
 ## Architecture / Design Notes
 
@@ -48,7 +48,8 @@ The build runs unit tests, integration tests, and JaCoCo coverage checks for bus
 - Configuration is environment-driven through `AppConfig`
 - Errors are returned as RFC 7807 problem details with trace ids
 - Request logging is emitted as JSON and includes per-request trace ids
-- Legacy endpoints remain temporarily available with deprecation headers while clients migrate to the documented contract
+- Books now support canonical author linkage through first-class author records
+- Legacy endpoints and legacy book author field remain temporarily available while clients migrate to the documented contract
 
 ## Maintainers
 

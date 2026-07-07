@@ -30,17 +30,19 @@ import static org.mockito.Mockito.when;
 class BookServiceTest {
     private MongoCollection<Document> collection;
     private BookService bookService;
+    private AuthorService authorService;
 
     @BeforeEach
     void setUp() {
         MongoClient mongoClient = mock(MongoClient.class);
         MongoDatabase database = mock(MongoDatabase.class);
         collection = mock(MongoCollection.class);
+        authorService = mock(AuthorService.class);
 
         when(mongoClient.getDatabase("bookstore")).thenReturn(database);
         when(database.getCollection("books")).thenReturn(collection);
 
-        bookService = new BookService(mongoClient, "bookstore", "books");
+        bookService = new BookService(mongoClient, "bookstore", "books", authorService);
     }
 
     @Test
@@ -48,7 +50,7 @@ class BookServiceTest {
         FindIterable<Document> findIterable = iterableWith(bookDocument(new ObjectId(), "Clean Code", 6));
         when(collection.find(any(Bson.class))).thenReturn(findIterable);
 
-        List<Book> books = bookService.listBooks("Programming");
+        List<Book> books = bookService.listBooks("Programming", null);
 
         assertEquals(1, books.size());
         assertEquals("Clean Code", books.getFirst().getTitle());
@@ -76,6 +78,21 @@ class BookServiceTest {
         assertEquals("Domain-Driven Design", created.getTitle());
         assertEquals(6, created.getCategoryId());
         assertEquals(4, created.getQuantity());
+        verify(collection).insertOne(any(Document.class));
+    }
+
+    @Test
+    void createBookLinksResolvedAuthor() {
+        CreateBookDTO request = new CreateBookDTO();
+        request.setTitle("Domain-Driven Design");
+        request.setAuthorId("507f1f77bcf86cd799439099");
+        when(authorService.resolveAuthorLink("507f1f77bcf86cd799439099", null))
+                .thenReturn(new AuthorService.AuthorLink("507f1f77bcf86cd799439099", "Eric Evans"));
+
+        Book created = bookService.createBook(request);
+
+        assertEquals("507f1f77bcf86cd799439099", created.getAuthorId());
+        assertEquals("Eric Evans", created.getAuthor());
         verify(collection).insertOne(any(Document.class));
     }
 

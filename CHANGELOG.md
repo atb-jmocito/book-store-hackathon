@@ -1,5 +1,91 @@
 # Changelog
 
+## 2026-07-07 - FR2 author management and book-author linkage
+
+### Summary
+
+This change set implements feature request #2 by introducing first-class author management, canonical book-to-author linkage, author-based book filtering, and a documentation-first feature pack under `docs/features/fr2/`. It also refreshes shared repository docs and the runtime OpenAPI contract so the shipped behavior stays fully documented.
+
+### Why this change exists
+
+- Replace free-text-only author handling with first-class author entities
+- Support author lifecycle management without breaking current book clients
+- Enable stable author-based filtering across the catalog
+- Keep feature specification, implementation tasks, QA checklist, and shared docs aligned with delivered behavior
+
+### API changes
+
+- Added author management endpoints:
+  - `POST /api/authors`
+  - `GET /api/authors`
+  - `GET /api/authors/{id}`
+  - `DELETE /api/authors/{id}` for soft-delete
+- Extended `GET /api/books` with optional `authorId` filtering
+- Extended `POST /api/books` with preferred `authorId` input
+- Preserved legacy `author` request/response behavior for compatibility
+- Kept deprecated compatibility route `GET /api/books/single` working for author lookups by keeping author display text on books
+
+### Domain and persistence changes
+
+- Added new `Author` model and `CreateAuthorDTO`
+- Added dedicated `AuthorService` for validation, persistence, uniqueness, soft-delete, and canonical author resolution
+- Added dedicated `AuthorController`
+- Extended `Book` with additive `authorId`
+- Updated `BookService` to:
+  - resolve books against existing active authors
+  - auto-create minimal author records when legacy book creation provides only an unknown author name
+  - filter books directly by `authorId`
+- Added MongoDB author uniqueness support via `authors.nameKey`
+- Added MongoDB index support for `books.authorId`
+- Added configurable author collection name via `BOOKSTORE_AUTHOR_COLLECTION`
+
+### Validation and behavior changes
+
+- Added conflict responses for duplicate author names
+- Added validation for invalid `authorId` values
+- Prevented linking new books to inactive authors through the legacy name path
+- Kept soft-deleted authors retrievable by id and list filters
+- Kept linked books readable after author soft-delete
+
+### Documentation changes
+
+- Added feature-specific docs:
+  - `docs/features/fr2/spec.md`
+  - `docs/features/fr2/tasks.md`
+  - `docs/features/fr2/checklist.md`
+- Updated `docs/openapi/openapi.yaml` for author endpoints and book author linkage
+- Updated `docs/openapi/README.md`
+- Updated `docs/functional/README.md`
+- Updated `docs/technical/README.md`
+- Updated root `README.md` for author support and new configuration surface
+
+### Test coverage changes
+
+- Added unit tests for:
+  - `AuthorController`
+  - `AuthorService`
+- Expanded tests for:
+  - `BookController`
+  - `BookService`
+  - `CreateBookDTO`
+  - API documentation components
+  - end-to-end integration behavior for author lifecycle and author-linked books
+
+### Pull request notes
+
+Suggested reviewer focus:
+
+1. **API:** author lifecycle routes, book `authorId` behavior, compatibility handling
+2. **Persistence:** canonical author resolution, soft-delete semantics, Mongo indexes
+3. **Docs and quality:** OpenAPI alignment, feature docs, expanded tests
+
+Behavioral considerations for reviewers:
+
+- `authorId` is additive; `author` remains in book payloads for compatibility
+- `DELETE /authors/{id}` performs soft-delete, not hard-delete
+- new books may implicitly create a minimal author record when only legacy `author` text is supplied
+- author updates are still out of scope for this feature
+
 ## 2026-07-07 - Company guideline compliance refactor
 
 ### Summary

@@ -9,8 +9,10 @@ import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoCollection;
 import com.mongodb.client.MongoDatabase;
 import com.mongodb.client.model.Filters;
+import com.mongodb.client.model.Indexes;
 import com.mongodb.client.model.Updates;
 import org.bson.Document;
+import org.bson.conversions.Bson;
 import org.bson.types.ObjectId;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -24,19 +26,31 @@ public class BookService {
     private static final Logger LOGGER = LoggerFactory.getLogger(BookService.class);
 
     private final MongoCollection<Document> collection;
+    private final AuthorService authorService;
 
-    public BookService(MongoClient mongoClient, String databaseName, String collectionName) {
+    public BookService(MongoClient mongoClient, String databaseName, String collectionName, AuthorService authorService) {
         MongoDatabase database = mongoClient.getDatabase(databaseName);
         this.collection = database.getCollection(collectionName);
+        this.authorService = authorService;
+        this.collection.createIndex(Indexes.ascending("authorId"));
     }
 
-    public List<Book> listBooks(String categoryName) {
-        if (categoryName == null || categoryName.isBlank()) {
+    public List<Book> listBooks(String categoryName, String authorId) {
+        List<Bson> filters = new ArrayList<>();
+        if (hasText(categoryName)) {
+            Category category = resolveCategory(categoryName);
+            filters.add(Filters.eq("categoryId", category.getId()));
+        }
+        if (hasText(authorId)) {
+            filters.add(Filters.eq("authorId", AuthorService.toObjectId(authorId, "authorId").toHexString()));
+        }
+        if (filters.isEmpty()) {
             return mapBooks(collection.find());
         }
-
-        Category category = resolveCategory(categoryName);
-        return mapBooks(collection.find(Filters.eq("categoryId", category.getId())));
+        if (filters.size() == 1) {
+            return mapBooks(collection.find(filters.getFirst()));
+        }
+        return mapBooks(collection.find(Filters.and(filters)));
     }
 
     public Book getBookById(String id) {
@@ -65,12 +79,14 @@ public class BookService {
         }
 
         Category category = request.resolveCategoryName() == null ? null : resolveCategory(request.resolveCategoryName());
+        AuthorService.AuthorLink authorLink = authorService.resolveAuthorLink(request.getAuthorId(), request.getAuthor());
         ObjectId objectId = new ObjectId();
         Date inactiveDate = request.isActive() ? request.getInactiveDate() : defaultInactiveDate(request.getInactiveDate());
 
         Document document = new Document("_id", objectId)
                 .append("title", request.getTitle().trim())
-                .append("author", trimToNull(request.getAuthor()))
+                .append("authorId", authorLink == null ? null : authorLink.id())
+                .append("author", authorLink == null ? trimToNull(request.getAuthor()) : authorLink.name())
                 .append("categoryId", category == null ? null : category.getId())
                 .append("quantity", request.getQuantity() == null ? 0 : request.getQuantity())
                 .append("description", trimToNull(request.getDescription()))
@@ -146,6 +162,7 @@ public class BookService {
         Book book = new Book();
         book.setId(doc.getObjectId("_id").toHexString());
         book.setTitle(doc.getString("title"));
+        book.setAuthorId(doc.getString("authorId"));
         book.setAuthor(doc.getString("author"));
         Integer quantity = doc.getInteger("quantity");
         book.setQuantity(quantity == null ? 0 : quantity);
@@ -174,15 +191,7 @@ public class BookService {
     }
 
     private static ObjectId toObjectId(String id) {
-        if (!hasText(id)) {
-            throw ApiException.badRequest("Field 'id' is required.");
-        }
-
-        try {
-            return new ObjectId(id.trim());
-        } catch (IllegalArgumentException exception) {
-            throw ApiException.badRequest("Field 'id' must be a valid MongoDB ObjectId.");
-        }
+        return AuthorService.toObjectId(id, "id");
     }
 
     private static boolean hasText(String value) {

@@ -65,7 +65,7 @@ class ApiComponentsTest {
 
     @Test
     void documentationResourceServesOpenApiAndSwaggerUi() {
-        AppConfig appConfig = new AppConfig("127.0.0.1", 8080, "/api", "mongodb://localhost:27017", "bookstore", "books", "local", true);
+        AppConfig appConfig = new AppConfig("127.0.0.1", 8080, "/api", "mongodb://localhost:27017", "bookstore", "books", "authors", "local", true);
         DocumentationResource resource = new DocumentationResource(appConfig);
 
         Response openApi = resource.openApi();
@@ -78,6 +78,7 @@ class ApiComponentsTest {
         assertEquals(200, openApi.getStatus());
         assertEquals("application/yaml", openApi.getMediaType().toString());
         assertTrue(openApiBody.contains("/books/{id}:"));
+        assertTrue(openApiBody.contains("/authors/{id}:"));
         assertEquals(openApiBody, openApiYaml.getEntity());
         assertTrue(swaggerBody.contains("/api/v3/api-docs"));
         assertTrue(swaggerBody.contains("SwaggerUIBundle"));

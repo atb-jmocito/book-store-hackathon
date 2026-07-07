@@ -2,29 +2,31 @@
 
 ## Purpose
 
-This document explains current Bookstore behavior for product owners and business managers. It describes what business capabilities exist today, which rules govern them, and which runtime quirks materially affect users or downstream consumers.
-
-This is a **current-state** document. It reflects runtime behavior as implemented, even when that behavior is surprising or imperfect.
+This document explains the current business behavior of the Bookstore service. It reflects shipped runtime behavior, including author management introduced in FR2.
 
 ## Product summary
 
-Bookstore is a small inventory service for managing a bookstore catalog of books.
+Bookstore is a small inventory service for managing bookstore catalog records and first-class author profiles.
 
-Today, system supports only five runtime capabilities:
+Today, system supports these runtime capabilities:
 
 | Capability | Business purpose | Current status |
 | --- | --- | --- |
 | Health check | Confirm service is reachable | Supported |
 | List books | View catalog or inventory list | Supported |
-| Get one book | Retrieve one record by title or id | Supported with limitations |
+| Get one book | Retrieve one record by title or id | Supported with legacy compatibility route |
 | Create book | Add a new catalog/inventory record | Supported |
-| Update stock/status | Change quantity and active status of an existing record | Supported |
+| Update stock/status | Change quantity and active status of an existing book | Supported |
+| List authors | View author profiles, including optional active-state filtering | Supported |
+| Get one author | Retrieve one author profile by id | Supported |
+| Create author | Add an author profile before linking books | Supported |
+| Soft-delete author | Mark author inactive without removing linked books | Supported |
 
 Out of scope in current product:
 
 - no book deletion
+- no author update endpoint
 - no category management
-- no author search
 - no bulk import/export
 - no pagination or sorting controls
 - no authentication, authorization, or approval workflow
@@ -34,11 +36,12 @@ Out of scope in current product:
 | Concept | Meaning in current product | Rules |
 | --- | --- | --- |
 | Book | Main inventory record | One record combines catalog metadata and stock/status data |
+| Author | First-class profile linked to books | One author can be linked to many books |
 | Category | Fixed classification for a book | Must be one of six predefined categories; categories are not configurable at runtime |
 | Quantity | Inventory count stored on the book record | Any integer value is accepted; no runtime validation prevents negative stock |
-| Active | Whether book is considered active in catalog/inventory | Can be changed only through update flow |
-| Inactive date | Timestamp linked to deactivation | Set automatically when a book is updated to inactive |
-| Publisher date | Publication date supplied with the book | Stored as provided on create; not editable through update flow |
+| Active book | Whether book is considered active in catalog/inventory | Can be changed only through update flow |
+| Active author | Whether author profile is active | `DELETE /authors/{id}` sets `active=false` |
+| Inactive date | Timestamp linked to book deactivation | Set automatically when a book is updated to inactive |
 
 ## Fixed category model
 
@@ -55,8 +58,24 @@ Business implications:
 
 - catalog can only classify books into these six categories
 - there is no business flow to add, rename, or remove categories
-- create requests use a field named `categoryId`, but runtime expects the **category name** (for example `Programming`), not numeric id `6`
-- list filtering also uses category name
+- create requests use `categoryName` as preferred field
+- deprecated `categoryId` request alias still accepts category name text during transition
+- list filtering uses category name
+
+## Author data captured
+
+Each author record contains:
+
+| Field | Business meaning | Current rule |
+| --- | --- | --- |
+| `id` | Unique technical identifier | Generated on create |
+| `name` | Canonical author name | Required, trimmed, max 255 chars, unique ignoring case |
+| `birthDate` | Author birth date | Optional |
+| `nationality` | Country or nationality text | Optional |
+| `email` | Contact email | Optional, basic format validation |
+| `active` | Whether author is active | Defaults to `true`; set to `false` on soft-delete |
+| `createdAt` | Creation timestamp | Auto-generated |
+| `updatedAt` | Last change timestamp | Auto-generated |
 
 ## Book data captured
 
@@ -64,10 +83,11 @@ Each book record can contain:
 
 | Field | Business meaning | Current rule |
 | --- | --- | --- |
-| `id` | Unique technical identifier | Generated on create unless explicitly supplied internally |
+| `id` | Unique technical identifier | Generated on create |
 | `title` | Book title | Only field required for create |
-| `author` | Author name | Optional on create; not searchable in supported runtime flow |
-| `categoryId` | Category classification | Returned and stored as numeric category id, but supplied as category name during create |
+| `authorId` | Canonical linked author identifier | Optional but preferred for new writes |
+| `author` | Author display name | Preserved for backward compatibility; populated from canonical author when linked |
+| `categoryId` | Category classification | Returned as numeric category id; create accepts category name input |
 | `quantity` | Stock quantity | Optional on create; defaults to `0` when omitted |
 | `description` | Free-text description | Optional |
 | `language` | Book language | Optional |
@@ -80,62 +100,56 @@ Each book record can contain:
 
 ### 1. Health check
 
-Purpose: operational confirmation that API is up.
-
 Rules:
 
-- health check has no business payload
-- success means service responds, not that catalog data is valid or complete
+- health check returns operational JSON payload with `status` and `traceId`
+- success means service responds, not that catalog data is complete
 
 ### 2. List books
 
-Purpose: retrieve catalog/inventory records.
+Purpose: retrieve catalog and inventory records.
 
 Rules:
 
-- when no category is supplied, system returns all books
-- when category matches one of six predefined category names, system returns only books in that category
-- when category does **not** match a predefined category, system rejects request with validation error details
+- when no filters are supplied, system returns all books
+- when `category` matches one of six predefined category names, system filters by category
+- when `authorId` is supplied, system filters by linked author identity
+- when both `category` and `authorId` are supplied, both filters are applied
+- when category is invalid, request is rejected with validation error details
+- when `authorId` format is invalid, request is rejected with validation error details
+- valid-but-missing `authorId` returns an empty list
 - response is a plain list of books with no pagination
-- no sort order is defined as business behavior
 
 ### 3. Get one book
 
-Purpose: retrieve a single book record.
+Primary behavior:
 
-Current lookup behavior:
+- `GET /books/{id}` returns one book by MongoDB ObjectId
 
-- system accepts lookup by `name`, `id`, or `author`
-- title lookup uses exact title equality
-- if more than one lookup parameter is supplied, `id` has precedence, then `name`, then `author`
+Legacy compatibility behavior:
 
-Business-relevant quirks:
-
-- when nothing matches, system returns not-found problem details
-- id lookup validates MongoDB ObjectId format and rejects malformed ids as bad requests
+- `GET /books/single` still accepts lookup by `id`, `name`, or `author`
+- precedence is `id`, then `name`, then `author`
+- legacy `author` lookup still works because linked books retain `author` text
 
 ### 4. Create book
 
-Purpose: add a new book record to catalog/inventory.
+Purpose: add a new book record to catalog and inventory.
 
 Rules:
 
 - create succeeds only when `title` is present
-- all other fields are optional at runtime
-- `categoryName` is preferred for create requests
-- legacy `categoryId` is still accepted during transition, but still carries category **name** text rather than numeric id
+- `authorId` is preferred for canonical author linkage
+- when `authorId` is present, it must point to an existing active author
+- when `authorId` is absent and legacy `author` text is present, system resolves an active author by exact trimmed name ignoring case
+- when no active author matches legacy `author` text, system auto-creates a minimal author profile and links the book to it
+- when matching author name exists but is inactive, request is rejected with conflict error details
+- all other fields remain optional at runtime
 - invalid category values are rejected with validation-oriented error details
 - quantity defaults to `0` when omitted
 - active defaults to `true` when omitted
 - system does not prevent duplicate books
-- no uniqueness rule exists for title, author, or title-plus-author combinations
-- system does not validate business quality of optional fields such as author, publisher, description, or language
 - system does not validate inventory rules such as non-negative quantity
-
-Output behavior:
-
-- successful create returns created book payload
-- missing `title` is rejected with RFC 7807 validation error details
 
 ### 5. Update stock and active status
 
@@ -144,67 +158,96 @@ Purpose: change inventory quantity and active/inactive state for an existing boo
 Rules:
 
 - update succeeds only when `id` is present
-- update flow only changes:
-  - `quantity`
-  - `active`
-  - `inactiveDate`
-- update flow does **not** change title, author, category, description, language, publisher, or publisher date
+- update flow only changes `quantity`, `active`, and `inactiveDate`
+- update flow does not change title, author linkage, category, description, language, publisher, or publisher date
 - when book is updated with `active = false`, system sets `inactiveDate` to current system time
 - when book is updated with `active = true`, system clears `inactiveDate`
-- `active` is optional in update requests and is only changed when explicitly supplied
-- quantity has no business validation, so negative values are accepted
+- negative quantities are still accepted
 
-Output behavior:
+### 6. List authors
 
-- successful update returns a full refreshed book payload
-- missing `id` is rejected with RFC 7807 validation error details
+Purpose: retrieve author profiles.
+
+Rules:
+
+- when no filter is supplied, system returns both active and inactive authors
+- `active=true` returns only active authors
+- `active=false` returns only inactive authors
+- response is a plain list with no pagination
+
+### 7. Get one author
+
+Purpose: retrieve a single author profile.
+
+Rules:
+
+- author lookup uses MongoDB ObjectId
+- inactive authors remain retrievable
+- malformed ids are rejected as bad requests
+- missing ids return not-found problem details
+
+### 8. Create author
+
+Purpose: create an author profile before linking books.
+
+Rules:
+
+- create succeeds only when `name` is present
+- names are unique ignoring case
+- duplicate names return conflict problem details
+- optional email is validated with a basic address format rule
+- record is created active by default
+
+### 9. Soft-delete author
+
+Purpose: deactivate an author without removing history or linked books.
+
+Rules:
+
+- soft-delete sets `active=false`
+- linked books remain queryable and keep author display text
+- repeated soft-delete returns the inactive author representation
+- soft-delete does not cascade into book deactivation
 
 ## Lifecycle rules
 
-Book lifecycle in current product is simple:
+### Book lifecycle
 
-1. Book is created with metadata, quantity, and active flag.
+1. Book is created with metadata, quantity, active flag, and optional canonical author link.
 2. Book remains queryable whether active or inactive.
 3. Quantity and active status can be changed later.
-4. Deactivation stamps current inactive date.
-5. There is no delete or archive flow.
+4. There is still no book delete or archive flow.
 
-Implications:
+### Author lifecycle
 
-- inactive books remain part of catalog data
-- inactive books still appear in list and single-book lookup results; active flag does not automatically hide them
-- system behaves more like inventory record maintenance than full catalog lifecycle management
+1. Author is created explicitly through `/authors` or implicitly during legacy book creation.
+2. Author can be linked to many books.
+3. Author can be soft-deleted later.
+4. Soft-deleted author remains readable by id and list filters.
 
 ## Cross-cutting business limitations
 
-Current product has several constraints that matter to business stakeholders:
-
 - no user roles or access control
-- no audit trail of who changed a book
-- no approval step before a book becomes active/inactive
-- no validation workflow yet for inventory rules such as non-negative quantity
+- no audit trail of who changed a book or author
+- no approval step before a book or author becomes inactive
+- no author update flow for correcting profile details after creation
 - no bulk operations
-- author lookup is supported on the legacy single-book compatibility route
-- no support for editing descriptive metadata after create
-
-## Known behavior quirks to keep in mind
-
-These are not desired-state recommendations. They are current behaviors that affect real usage:
-
-- create field name `categoryId` remains as deprecated compatibility alias and still carries category name text
-- legacy compatibility endpoints remain exposed and should be phased out after client migration
 
 ## Source traceability
 
 This document was derived from current implementation and supporting docs:
 
-- API contract snapshot: `../openapi/openapi.yaml`
+- API contract: `../openapi/openapi.yaml`
 - OpenAPI notes: `../openapi/README.md`
 - Technical overview: `../technical/README.md`
 - Runtime source:
+  - `src/main/java/com/bookstore/controller/AuthorController.java`
   - `src/main/java/com/bookstore/controller/BookController.java`
+  - `src/main/java/com/bookstore/service/AuthorService.java`
   - `src/main/java/com/bookstore/service/BookService.java`
+  - `src/main/java/com/bookstore/controller/CreateAuthorDTO.java`
   - `src/main/java/com/bookstore/controller/CreateBookDTO.java`
   - `src/main/java/com/bookstore/controller/UpdateBookDTO.java`
+  - `src/main/java/com/bookstore/model/Author.java`
+  - `src/main/java/com/bookstore/model/Book.java`
   - `src/main/java/com/bookstore/model/Category.java`
-  - `mongo-init/01-init-bookstore.js`
