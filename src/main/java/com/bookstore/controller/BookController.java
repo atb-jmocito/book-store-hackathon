@@ -32,8 +32,8 @@ public class BookController {
     }
 
     @GET
-    public Response listBooks(@QueryParam("category") String category) {
-        return Response.ok(bookService.listBooks(category)).build();
+    public Response listBooks(@QueryParam("category") String category, @QueryParam("authorId") String authorId) {
+        return Response.ok(bookService.listBooks(category, authorId)).build();
     }
 
     @GET

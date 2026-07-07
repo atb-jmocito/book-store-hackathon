@@ -6,6 +6,7 @@ import java.util.Date;
 
 public class CreateBookDTO {
     private String title;
+    private String authorId;
     private String author;
     @JsonbProperty("categoryId")
     private String legacyCategoryName;
@@ -37,6 +38,14 @@ public class CreateBookDTO {
 
     public void setAuthor(String author) {
         this.author = author;
+    }
+
+    public String getAuthorId() {
+        return authorId;
+    }
+
+    public void setAuthorId(String authorId) {
+        this.authorId = authorId;
     }
 
     public String getCategoryId() {

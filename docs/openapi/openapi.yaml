@@ -1,11 +1,11 @@
 openapi: 3.0.4
 info:
   title: Bookstore API
-  version: 1.0.0
+  version: 1.1.0
   description: |-
-    Book inventory API for the Bookstore service.
+    Book inventory and author management API for the Bookstore service.
 
-    Primary contract uses `/books` and `/books/{id}`.
+    Primary contract uses `/authors`, `/books`, and `/books/{id}`.
     Legacy compatibility routes remain temporarily available and are marked as deprecated.
 servers:
   - url: __API_BASE_PATH__
@@ -13,6 +13,8 @@ servers:
 tags:
   - name: health
     description: Service health and diagnostics
+  - name: authors
+    description: Author management operations
   - name: books
     description: Book inventory operations
 paths:
@@ -29,14 +31,101 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HealthStatus'
+  /authors:
+    get:
+      tags: [authors]
+      summary: List authors
+      description: Returns all authors or filters by active state.
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/ActiveQuery'
+      responses:
+        '200':
+          description: Author list.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Author'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    post:
+      tags: [authors]
+      summary: Create author
+      description: Creates a first-class author record.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateAuthorRequest'
+      responses:
+        '201':
+          description: Author created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Author'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+  /authors/{id}:
+    get:
+      tags: [authors]
+      summary: Get author by id
+      description: Returns one author by MongoDB ObjectId, including inactive authors.
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/AuthorIdPath'
+      responses:
+        '200':
+          description: Matching author.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Author'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    delete:
+      tags: [authors]
+      summary: Soft-delete author
+      description: Marks an author as inactive without removing the record.
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/AuthorIdPath'
+      responses:
+        '200':
+          description: Author marked inactive.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Author'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
   /books:
     get:
       tags: [books]
       summary: List books
-      description: Returns all books, or filters by supported category name.
+      description: Returns all books, or filters by supported category name, author id, or both.
       security: []
       parameters:
         - $ref: '#/components/parameters/CategoryQuery'
+        - $ref: '#/components/parameters/AuthorIdQuery'
       responses:
         '200':
           description: Book list.
@@ -53,7 +142,10 @@ paths:
     post:
       tags: [books]
       summary: Create book
-      description: Creates a book. `categoryName` is preferred; legacy `categoryId` string alias is still accepted during transition.
+      description: |-
+        Creates a book. `categoryName` is preferred; legacy `categoryId` string alias is still accepted during transition.
+
+        `authorId` is preferred for canonical author linkage. If omitted, legacy `author` text is used to resolve an active author by name or create a minimal author record automatically.
       security: []
       requestBody:
         required: true
@@ -70,6 +162,10 @@ paths:
                 $ref: '#/components/schemas/Book'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
         '500':
           $ref: '#/components/responses/InternalServerError'
     put:
@@ -184,11 +280,32 @@ paths:
                 $ref: '#/components/schemas/HealthStatus'
 components:
   parameters:
+    ActiveQuery:
+      name: active
+      in: query
+      required: false
+      description: Optional active-state filter for authors.
+      schema:
+        type: boolean
     CategoryQuery:
       name: category
       in: query
       required: false
       description: Supported category name. Allowed values: Fiction, Non-Fiction, Science, Biography, Children, Programming.
+      schema:
+        type: string
+    AuthorIdQuery:
+      name: authorId
+      in: query
+      required: false
+      description: Canonical author identifier used to filter books.
+      schema:
+        type: string
+    AuthorIdPath:
+      name: id
+      in: path
+      required: true
+      description: MongoDB ObjectId for the target author.
       schema:
         type: string
     BookIdPath:
@@ -229,6 +346,12 @@ components:
         application/problem+json:
           schema:
             $ref: '#/components/schemas/ProblemDetails'
+    Conflict:
+      description: Request conflicts with current resource state.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
     InternalServerError:
       description: Unexpected server error.
       content:
@@ -236,19 +359,49 @@ components:
           schema:
             $ref: '#/components/schemas/ProblemDetails'
   schemas:
+    Author:
+      type: object
+      required: [id, name, active, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        birthDate:
+          type: string
+          format: date-time
+          nullable: true
+        nationality:
+          type: string
+          nullable: true
+        email:
+          type: string
+          nullable: true
+        active:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
     Book:
       type: object
-      required: [id, title, quantity, categoryId, active]
+      required: [id, title, quantity, active]
       properties:
         id:
           type: string
         title:
           type: string
+        authorId:
+          type: string
+          nullable: true
         author:
           type: string
           nullable: true
         categoryId:
           type: integer
+          nullable: true
         quantity:
           type: integer
         description:
@@ -270,14 +423,32 @@ components:
           type: string
           format: date-time
           nullable: true
+    CreateAuthorRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          maxLength: 255
+        birthDate:
+          type: string
+          format: date-time
+        nationality:
+          type: string
+        email:
+          type: string
     CreateBookRequest:
       type: object
       required: [title]
       properties:
         title:
           type: string
+        authorId:
+          type: string
+          description: Preferred canonical author reference.
         author:
           type: string
+          description: Legacy compatibility author field. Used to resolve or create an author when `authorId` is absent.
         categoryName:
           type: string
           description: Preferred category field.

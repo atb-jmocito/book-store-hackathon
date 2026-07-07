@@ -33,4 +33,8 @@ public class ApiException extends RuntimeException {
     public static ApiException notFound(String detail) {
         return new ApiException(Response.Status.NOT_FOUND, "https://bookstore.dev/problems/not-found", "Not Found", detail);
     }
+
+    public static ApiException conflict(String detail) {
+        return new ApiException(Response.Status.CONFLICT, "https://bookstore.dev/problems/conflict", "Conflict", detail);
+    }
 }

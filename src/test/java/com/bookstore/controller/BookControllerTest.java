@@ -61,13 +61,13 @@ public class BookControllerTest {
     public void testListBooksDelegatesToService() {
         Book book = new Book();
         book.setTitle("Clean Code");
-        when(mockService.listBooks("Programming")).thenReturn(List.of(book));
+        when(mockService.listBooks("Programming", "author-1")).thenReturn(List.of(book));
 
-        Response response = controller.listBooks("Programming");
+        Response response = controller.listBooks("Programming", "author-1");
 
         assertEquals(200, response.getStatus());
         assertEquals(List.of(book), response.getEntity());
-        verify(mockService).listBooks("Programming");
+        verify(mockService).listBooks("Programming", "author-1");
     }
 
     @Test

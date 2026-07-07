@@ -2,6 +2,7 @@
 const bookstoreDb = db.getSiblingDB("bookstore");
 
 bookstoreDb.createCollection("categories");
+bookstoreDb.createCollection("authors");
 
 bookstoreDb.categories.insertMany([
   { id: 1, name: "Fiction" },
@@ -13,4 +14,4 @@ bookstoreDb.categories.insertMany([
 ]);
 
 bookstoreDb.categories.createIndex({ id: 1 }, { unique: true });
-
+bookstoreDb.authors.createIndex({ nameKey: 1 }, { unique: true });

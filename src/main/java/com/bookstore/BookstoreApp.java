@@ -5,8 +5,10 @@ import com.bookstore.api.DocumentationResource;
 import com.bookstore.api.HealthResource;
 import com.bookstore.api.UnhandledExceptionMapper;
 import com.bookstore.config.AppConfig;
+import com.bookstore.controller.AuthorController;
 import com.bookstore.config.RequestTracingFilter;
 import com.bookstore.controller.BookController;
+import com.bookstore.service.AuthorService;
 import com.bookstore.service.BookService;
 import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoClients;
@@ -25,7 +27,8 @@ public class BookstoreApp {
     public static void main(String[] args) {
         AppConfig appConfig = AppConfig.load();
         MongoClient mongoClient = MongoClients.create(appConfig.mongoUri());
-        BookService bookService = new BookService(mongoClient, appConfig.databaseName(), appConfig.collectionName());
+        AuthorService authorService = new AuthorService(mongoClient, appConfig.databaseName(), appConfig.authorCollectionName());
+        BookService bookService = new BookService(mongoClient, appConfig.databaseName(), appConfig.collectionName(), authorService);
 
         ResourceConfig rc = new ResourceConfig()
                 .register(JsonBindingFeature.class)
@@ -34,6 +37,7 @@ public class BookstoreApp {
                 .register(new UnhandledExceptionMapper())
                 .register(new HealthResource())
                 .register(new DocumentationResource(appConfig))
+                .register(new AuthorController(authorService))
                 .register(new BookController(bookService));
 
         HttpServer server = GrizzlyHttpServerFactory.createHttpServer(appConfig.baseUri(), rc);
