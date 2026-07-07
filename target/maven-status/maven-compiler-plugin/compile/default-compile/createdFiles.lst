@@ -1,7 +1,0 @@
-com/bookstore/BookstoreApp.class
-com/bookstore/model/Category.class
-com/bookstore/service/BookService.class
-com/bookstore/controller/BookController.class
-com/bookstore/controller/UpdateBookDTO.class
-com/bookstore/controller/CreateBookDTO.class
-com/bookstore/model/Book.class
